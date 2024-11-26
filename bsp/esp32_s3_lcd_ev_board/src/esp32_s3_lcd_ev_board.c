@@ -382,7 +382,7 @@ static lv_display_t *bsp_display_lcd_init()
     ESP_LOGW(TAG, "CONFIG_BSP_LCD_RGB_BOUNCE_BUFFER_MODE");
 #endif
 
-    return lvgl_port_add_disp_rgb(&disp_cfg, &rgb_cfg);
+    return lvgl_port_add_disp_rgb_custom(&disp_cfg, &rgb_cfg);
 }
 
 static lv_indev_t *bsp_display_indev_init(lv_display_t *disp)

@@ -17,6 +17,7 @@
 #include "esp_lcd_panel_ops.h"
 #include "esp_lvgl_port.h"
 #include "esp_lvgl_port_priv.h"
+#include "esp_async_memcpy.h"
 
 #if CONFIG_IDF_TARGET_ESP32S3 && ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
 #include "esp_lcd_panel_rgb.h"
@@ -183,6 +184,80 @@ lv_display_t *lvgl_port_add_disp_rgb(const lvgl_port_display_cfg_t *disp_cfg, co
     }
     lvgl_port_unlock();
 
+    return disp;
+}
+
+typedef struct {
+    esp_lcd_panel_handle_t panel_handle;
+    void * internal_buf1;
+    async_memcpy_handle_t dma_handle;
+    lv_display_t * disp;
+} my_ctx_t;
+
+// static bool dma_done_cb(async_memcpy_handle_t mcp_hdl, async_memcpy_event_t *event, void *cb_args)
+// {
+//     my_ctx_t * c = cb_args;
+
+//     lv_disp_flush_ready(c->disp);
+
+//     return false; // a high priority task was not woken up by this function
+// }
+
+static void my_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map)
+{
+    my_ctx_t * c = lv_display_get_driver_data(disp);
+
+    esp_lcd_panel_draw_bitmap(c->panel_handle, area->x1, area->y1, area->x2 + 1, area->y2 + 1, px_map);
+    lv_disp_flush_ready(disp);
+
+    // uint8_t * dst_row_start = ((uint8_t *) c->internal_buf1) + (800 * 2 * area->y1 + 2 * area->x1);
+    // uint8_t * src_row_start = px_map;
+    // int32_t width = lv_area_get_width(area);
+    // int32_t n_rows = lv_area_get_height(area);
+    // for(int32_t i = 0; i < n_rows; i++) {
+    //     async_memcpy_isr_cb_t cb = i == n_rows - 1 ? dma_done_cb : NULL;
+    //     assert(ESP_OK == esp_async_memcpy(c->dma_handle,
+    //                                       dst_row_start,
+    //                                       src_row_start,
+    //                                       width * 2,
+    //                                       cb,
+    //                                       c));
+    //     dst_row_start += 800 * 2;
+    //     src_row_start += width * 2;
+    // }
+}
+
+lv_display_t *lvgl_port_add_disp_rgb_custom(const lvgl_port_display_cfg_t *disp_cfg, const lvgl_port_display_rgb_cfg_t *rgb_cfg)
+{
+    lvgl_port_lock(0);
+
+    lv_display_t * disp = lv_display_create(disp_cfg->hres, disp_cfg->vres);
+    static uint8_t partial_buf[2 * 800 * 120];
+    lv_display_set_buffers(disp, partial_buf, NULL, sizeof(partial_buf), LV_DISPLAY_RENDER_MODE_PARTIAL);
+    // static uint8_t partial_buf1[2 * 800 * 60];
+    // static uint8_t partial_buf2[2 * 800 * 60];
+    // lv_display_set_buffers(disp, partial_buf1, partial_buf2, sizeof(partial_buf1), LV_DISPLAY_RENDER_MODE_PARTIAL);
+    lv_display_set_flush_cb(disp, my_flush_cb);
+
+    // void * internal_buf1;
+    // assert(ESP_OK == esp_lcd_rgb_panel_get_frame_buffer(disp_cfg->panel_handle, 1, &internal_buf1));
+
+    // async_memcpy_config_t dma_cfg = ASYNC_MEMCPY_DEFAULT_CONFIG();
+    // dma_cfg.backlog = 60;
+    // // dma_cfg.psram_trans_align = 2;
+    // async_memcpy_handle_t dma_handle;
+    // // needs to be the `..._gdma_ahb` variant because it's using external ram
+    // assert(ESP_OK == esp_async_memcpy_install_gdma_ahb(&dma_cfg, &dma_handle));
+
+    my_ctx_t * c = malloc(sizeof(my_ctx_t));
+    assert(c);
+    c->panel_handle = disp_cfg->panel_handle;
+    // c->internal_buf1 = internal_buf1;
+    // c->dma_handle = dma_handle;
+    // c->disp = disp;
+    lv_display_set_driver_data(disp, c);
+
+    lvgl_port_unlock();
     return disp;
 }
 

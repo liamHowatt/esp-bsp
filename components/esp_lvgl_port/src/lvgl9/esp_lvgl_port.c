@@ -248,6 +248,7 @@ static void lvgl_port_task(void *arg)
 
             /* Handle LVGL */
             task_delay_ms = lv_timer_handler();
+            // lv_obj_invalidate(lv_screen_active());
             lvgl_port_unlock();
         } else {
             task_delay_ms = 1; /*Keep trying*/
